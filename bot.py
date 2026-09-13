@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Literal
@@ -30,7 +31,45 @@ from safety import blocks_minors
 
 load_dotenv()
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+# Telegram bot tokens in URLs look like: api.telegram.org/bot<token>/method
+_TOKEN_IN_URL = re.compile(
+    r"(https?://api\.telegram\.org/bot)([^/\s]+)(/)",
+    re.IGNORECASE,
+)
+# Also catch bare bot<digits:secret> patterns if logged outside full URLs
+_BARE_BOT_TOKEN = re.compile(r"\b(\d{6,}:[A-Za-z0-9_-]{20,})\b")
+
+
+class _RedactTelegramTokenFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        redacted = _TOKEN_IN_URL.sub(r"\1[REDACTED]\3", msg)
+        redacted = _BARE_BOT_TOKEN.sub("[REDACTED]", redacted)
+        if redacted != msg:
+            record.msg = redacted
+            record.args = ()
+        return True
+
+
+def _configure_logging() -> None:
+    root = logging.getLogger()
+    if not root.handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(message)s",
+        )
+    redact = _RedactTelegramTokenFilter()
+    for handler in logging.root.handlers:
+        handler.addFilter(redact)
+    # httpx logs full request URLs at INFO by default
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
+
+_configure_logging()
 log = logging.getLogger("bot")
 
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
