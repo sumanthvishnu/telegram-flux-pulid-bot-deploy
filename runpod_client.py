@@ -28,9 +28,9 @@ async def generate_one(
     image_bytes: bytes,
     prompt: str,
     id_weight: float = 1.0,
-    timeout_s: float = 900.0,
+    timeout_s: float = 1200.0,
 ) -> bytes:
-    """Submit one Flux+PuLID job; return output image bytes."""
+    """Submit one Flux Kontext job; return output image bytes."""
     payload: dict[str, Any] = {
         "input": {
             "image_b64": base64.b64encode(image_bytes).decode("ascii"),
@@ -38,7 +38,9 @@ async def generate_one(
             "id_weight": id_weight,
         }
     }
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    # Long client timeout: first cold start installs torch + downloads weights.
+    timeout = httpx.Timeout(120.0, connect=30.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         r = await client.post(
             f"{BASE}/{RUNPOD_ENDPOINT_ID}/run",
             headers=_headers(),
@@ -56,12 +58,21 @@ async def generate_one(
                 f"{BASE}/{RUNPOD_ENDPOINT_ID}/status/{job_id}",
                 headers=_headers(),
             )
+            if s.status_code == 404:
+                raise RunPodError(
+                    "RunPod job vanished (404). Usually a queue purge or endpoint "
+                    "redeploy mid-run — try again."
+                )
             s.raise_for_status()
             body = s.json()
             status = body.get("status")
             if status == "COMPLETED":
-                out = (body.get("output") or {})
-                b64 = out.get("image_b64")
+                out = body.get("output") or {}
+                if isinstance(out, list) and out:
+                    out = out[0] if isinstance(out[0], dict) else {"image_b64": out}
+                b64 = out.get("image_b64") if isinstance(out, dict) else None
+                if not b64 and isinstance(out, dict) and out.get("error"):
+                    raise RunPodError(f"Worker error: {out.get('error')}")
                 if not b64:
                     raise RunPodError(f"Completed but no image_b64: {body}")
                 return base64.b64decode(b64)
