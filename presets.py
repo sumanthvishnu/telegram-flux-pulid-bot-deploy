@@ -1,4 +1,4 @@
-"""FLUX Kontext lifestyle presets. Input image locks identity; prompts restyle scene."""
+"""FLUX Kontext sensual/raunchy adult presets. Input image locks identity."""
 
 # Kontext already sees the face — reinforce identity so it does not drift.
 _IDENTITY = (
@@ -9,8 +9,8 @@ _IDENTITY = (
 
 _PHOTO = (
     f"{_IDENTITY}, photorealistic photograph, natural skin texture, "
-    "visible pores, realistic lighting, candid, no cartoon, no anime, "
-    "no illustration, no CGI, no plastic skin"
+    "visible pores, realistic lighting, candid adult lifestyle, "
+    "no cartoon, no anime, no illustration, no CGI, no plastic skin"
 )
 
 PRESETS = {
@@ -18,76 +18,76 @@ PRESETS = {
         "title": "Custom prompt",
         "prompt": _PHOTO,
     },
-    "golden": {
-        "title": "Golden hour",
+    "lingerie": {
+        "title": "Lingerie",
         "prompt": (
-            f"{_PHOTO}. Outdoor golden-hour portrait of the same adult, warm sunlight, "
-            "soft rim light, shallow depth of field, casual summer clothes, "
-            "city rooftop or park, Kodak portra colors"
+            f"{_PHOTO}. The same adult in sheer lingerie, bedroom soft light, "
+            "seductive pose, lace details, intimate editorial, warm tones, "
+            "desire in the eyes, tasteful but sensual"
         ),
     },
-    "studio": {
-        "title": "Studio",
+    "wetshirt": {
+        "title": "Wet shirt",
         "prompt": (
-            f"{_PHOTO}. Clean studio portrait of the same adult, softbox key light, "
-            "subtle hair light, seamless grey backdrop, fashion lookbook, "
-            "tailored outfit, sharp eyes"
+            f"{_PHOTO}. The same adult in a soaked white shirt clinging to skin, "
+            "wet hair, droplets, bathroom or pool edge, steamy atmosphere, "
+            "raunchy candid, hard light highlights on wet fabric"
         ),
     },
-    "street": {
-        "title": "Street night",
+    "mirror": {
+        "title": "Mirror selfie",
         "prompt": (
-            f"{_PHOTO}. Night street photograph of the same adult, neon and tungsten "
-            "mixed lighting, wet pavement reflections, cinematic, "
-            "leather jacket, handheld documentary feel"
+            f"{_PHOTO}. The same adult taking a mirror selfie, phone in hand, "
+            "bedroom or hotel bathroom, lingerie or towel, flirtatious, "
+            "phone flash mixed with warm lamps, social-media thirst trap"
         ),
     },
-    "hotel": {
-        "title": "Hotel window",
+    "afterdark": {
+        "title": "After dark",
         "prompt": (
-            f"{_PHOTO}. The same adult in a luxury hotel room at night, city lights "
-            "through the window, warm practical lamps, silk slip dress or open shirt, "
-            "editorial lifestyle, intimate but classy"
+            f"{_PHOTO}. The same adult after dark in dim neon and tungsten, "
+            "undressed shoulders, intense eye contact, moody club-afterparty vibe, "
+            "cinematic grain, sensual and raw"
         ),
     },
-    "beach": {
-        "title": "Beach",
+    "silksheets": {
+        "title": "Silk sheets",
         "prompt": (
-            f"{_PHOTO}. The same adult on a beach at late afternoon, salty air, "
-            "wind in hair, swimwear, wet skin highlights, hard sun and fill, "
-            "film still, ocean bokeh"
+            f"{_PHOTO}. The same adult tangled in silk sheets, morning window light, "
+            "bare skin, sleepy smile, intimate bedroom, soft shadows, "
+            "raunchy lifestyle photograph"
         ),
     },
-    "pool": {
-        "title": "Pool night",
+    "boudoir": {
+        "title": "Boudoir",
         "prompt": (
-            f"{_PHOTO}. The same adult by a hotel pool at night, underwater lights, "
-            "turquoise reflections, swimsuit, wet hair, candid, "
-            "expensive vacation editorial"
+            f"{_PHOTO}. Classic boudoir portrait of the same adult, lace and velvet, "
+            "posed on a chaise, soft key light, glamorous sensual editorial, "
+            "adult allure, sharp eyes"
         ),
     },
-    "bedroom": {
-        "title": "Bedroom",
+    "shower": {
+        "title": "Shower steam",
         "prompt": (
-            f"{_PHOTO}. The same adult in a dim bedroom, morning window light, "
-            "linen sheets, oversized shirt, sleepy candid, natural, "
-            "lifestyle photograph"
+            f"{_PHOTO}. The same adult in a steamy shower, water on skin, "
+            "fogged glass, wet hair, intimate candid, soft backlight through steam, "
+            "sensual and photoreal"
         ),
     },
-    "rain": {
-        "title": "Rain",
+    "closeup": {
+        "title": "Close-up desire",
         "prompt": (
-            f"{_PHOTO}. The same adult in heavy rain at night, soaked clothes, "
-            "streetlights, droplets on skin and hair, cinematic still, "
-            "moody, high contrast"
+            f"{_PHOTO}. Tight close-up of the same adult's face and shoulders, "
+            "parted lips, heavy-lidded eyes, soft skin sheen, intimate desire, "
+            "shallow depth of field, bedroom bokeh"
         ),
     },
-    "gym": {
-        "title": "Gym",
+    "clubbath": {
+        "title": "Club bathroom",
         "prompt": (
-            f"{_PHOTO}. The same adult in a gym, athletic wear, sweat, "
-            "overhead industrial lights, documentary sports photo, "
-            "realistic muscle and skin"
+            f"{_PHOTO}. The same adult in a club bathroom stall or mirror, "
+            "harsh fluorescent and phone light, smudged makeup optional, "
+            "messy hair, afterparty raunchy candid, nightlife heat"
         ),
     },
 }
