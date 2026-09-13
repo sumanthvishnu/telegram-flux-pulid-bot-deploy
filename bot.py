@@ -10,14 +10,16 @@ from io import BytesIO
 from typing import Literal
 
 from dotenv import load_dotenv
-from telegram import InputMediaPhoto, Update
+from telegram import InputMediaPhoto, Message, Update
 from telegram.ext import (
     Application,
+    CallbackQueryHandler,
     CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
+from telegram.request import HTTPXRequest
 
 from keyboard import (
     BTN_BATCH,
@@ -25,7 +27,9 @@ from keyboard import (
     BTN_COMBINE,
     BTN_SINGLE,
     MAIN_KEYBOARD,
+    preset_keyboard,
 )
+from presets import PRESETS
 from runpod_client import RunPodError, generate_one
 from safety import blocks_minors
 
@@ -84,6 +88,7 @@ class Session:
     mode: Mode = "idle"
     photos: list[bytes] = field(default_factory=list)
     prompt: str | None = None
+    awaiting_custom: bool = False
 
 
 def _sessions(context: ContextTypes.DEFAULT_TYPE) -> dict[int, Session]:
@@ -103,16 +108,42 @@ def _allowed(user_id: int) -> bool:
     return str(user_id) == ALLOWED
 
 
+def _reset(sess: Session, mode: Mode = "idle") -> None:
+    sess.mode = mode
+    sess.photos = []
+    sess.prompt = None
+    sess.awaiting_custom = False
+
+
+def _preset_prompt_text(n: int, mode: Mode) -> str:
+    if mode == "single":
+        return (
+            f"Got {n} photo. Pick a preset, or Custom prompt.\n"
+            "Optional: caption a photo to run immediately."
+        )
+    return (
+        f"Got {n} photo(s). Send more, pick a preset, or Custom prompt.\n"
+        "Optional: caption a photo to run immediately."
+    )
+
+
+async def _show_presets(msg: Message, sess: Session) -> None:
+    await msg.reply_text(
+        _preset_prompt_text(len(sess.photos), sess.mode),
+        reply_markup=preset_keyboard(),
+    )
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not user or not _allowed(user.id):
         await update.message.reply_text("Not authorized.")
         return
-    _session(context, user.id).mode = "idle"
+    _reset(_session(context, user.id))
     await update.message.reply_text(
         "Hey — send photos after picking a mode.\n"
-        "• Single: 1 photo + prompt\n"
-        "• Batch: up to 10 photos + one prompt (1 out each)\n"
+        "• Single: 1 photo → preset or prompt\n"
+        "• Batch: up to 10 photos → one preset/prompt (1 out each)\n"
         "• Combine: several refs → one image\n\n"
         "Adult OK. Minors hard-blocked.",
         reply_markup=MAIN_KEYBOARD,
@@ -132,19 +163,25 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     sess = _session(context, user.id)
 
     if text == BTN_SINGLE:
-        sess.mode, sess.photos, sess.prompt = "single", [], None
-        await msg.reply_text("Single mode — send 1 photo, then the prompt.")
+        _reset(sess, "single")
+        await msg.reply_text(
+            "Single mode — send 1 photo, then pick a preset or type a prompt."
+        )
         return
     if text == BTN_BATCH:
-        sess.mode, sess.photos, sess.prompt = "batch", [], None
-        await msg.reply_text("Batch mode — send up to 10 photos (album OK), then one prompt.")
+        _reset(sess, "batch")
+        await msg.reply_text(
+            "Batch mode — send up to 10 photos (album OK), then a preset or prompt."
+        )
         return
     if text == BTN_COMBINE:
-        sess.mode, sess.photos, sess.prompt = "combine", [], None
-        await msg.reply_text("Combine mode — send 2–10 refs, then a prompt.")
+        _reset(sess, "combine")
+        await msg.reply_text(
+            "Combine mode — send 2–10 refs, then a preset or prompt."
+        )
         return
     if text == BTN_CANCEL:
-        sess.mode, sess.photos, sess.prompt = "idle", [], None
+        _reset(sess)
         await msg.reply_text("Cancelled.", reply_markup=MAIN_KEYBOARD)
         return
 
@@ -158,11 +195,13 @@ async def on_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if not sess.photos:
-        await msg.reply_text("Send photo(s) first, then the prompt.")
+        await msg.reply_text("Send photo(s) first, then a preset or prompt.")
         return
 
-    sess.prompt = text
-    await _run(update, context, sess)
+    sess.awaiting_custom = False
+    # Custom / typed prompts still get the identity/photoreal prefix.
+    sess.prompt = f"{PRESETS['custom']['prompt']}. {text}"
+    await _run(msg, sess)
 
 
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -180,10 +219,14 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         return
 
     if sess.mode == "single" and len(sess.photos) >= 1:
-        await msg.reply_text("Single mode already has a photo. Send a prompt, or Cancel.")
+        await msg.reply_text(
+            "Single mode already has a photo. Pick a preset, type a prompt, or Cancel."
+        )
         return
     if len(sess.photos) >= MAX_BATCH:
-        await msg.reply_text(f"Max {MAX_BATCH} photos. Send a prompt or Cancel.")
+        await msg.reply_text(
+            f"Max {MAX_BATCH} photos. Pick a preset, type a prompt, or Cancel."
+        )
         return
 
     photo = msg.photo[-1]
@@ -191,6 +234,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     buf = BytesIO()
     await tg_file.download_to_memory(buf)
     sess.photos.append(buf.getvalue())
+    sess.awaiting_custom = False
 
     caption = (msg.caption or "").strip()
     if caption:
@@ -198,28 +242,79 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if reason:
             await msg.reply_text(reason)
             return
-        sess.prompt = caption
-
-    n = len(sess.photos)
-    if sess.prompt:
-        await _run(update, context, sess)
+        sess.prompt = f"{PRESETS['custom']['prompt']}. {caption}"
+        await _run(msg, sess)
         return
 
-    await msg.reply_text(f"Got {n} photo(s). Send the prompt when ready.")
+    await _show_presets(msg, sess)
 
 
-async def _run(update: Update, context: ContextTypes.DEFAULT_TYPE, sess: Session) -> None:
-    msg = update.message
-    assert msg and sess.prompt
+async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.callback_query
+    user = update.effective_user
+    if not query or not user:
+        return
+    if not _allowed(user.id):
+        await query.answer("Not authorized.", show_alert=True)
+        return
+
+    raw = query.data or ""
+    if not raw.startswith("p:"):
+        await query.answer()
+        return
+
+    key = raw.split(":", 1)[1]
+    if key not in PRESETS:
+        await query.answer("Unknown preset.", show_alert=True)
+        return
+
+    sess = _session(context, user.id)
+    if sess.mode == "idle" or not sess.photos:
+        await query.answer("Send photo(s) in a mode first.", show_alert=True)
+        return
+
+    await query.answer()
+
+    if key == "custom":
+        sess.awaiting_custom = True
+        sess.prompt = None
+        try:
+            await query.edit_message_text(
+                "Type your custom prompt as a text message. "
+                "Minors are still hard-blocked."
+            )
+        except Exception:
+            if query.message:
+                await query.message.reply_text(
+                    "Type your custom prompt as a text message. "
+                    "Minors are still hard-blocked."
+                )
+        return
+
+    sess.awaiting_custom = False
+    sess.prompt = PRESETS[key]["prompt"]
+    msg = query.message
+    if not msg:
+        return
+    try:
+        await query.edit_message_text(f"Running preset: {PRESETS[key]['title']}…")
+    except Exception:
+        pass
+    await _run(msg, sess)
+
+
+async def _run(msg: Message, sess: Session) -> None:
+    assert sess.prompt
 
     photos = list(sess.photos)
     prompt = sess.prompt
     mode = sess.mode
-    sess.mode, sess.photos, sess.prompt = "idle", [], None
+    _reset(sess)
 
     await msg.reply_text(
         f"Running {mode}: {len(photos)} in → "
-        f"{'1' if mode == 'combine' else len(photos)} out. GPU may cold-start…"
+        f"{'1' if mode == 'combine' else len(photos)} out. GPU may cold-start…",
+        reply_markup=MAIN_KEYBOARD,
     )
 
     try:
@@ -260,10 +355,29 @@ def main() -> None:
     if missing:
         raise SystemExit(f"Missing env: {', '.join(missing)}")
 
-    app = Application.builder().token(TOKEN).build()
+    req = HTTPXRequest(
+        connect_timeout=30.0,
+        read_timeout=120.0,
+        write_timeout=120.0,
+        pool_timeout=30.0,
+    )
+    app = (
+        Application.builder()
+        .token(TOKEN)
+        .request(req)
+        .get_updates_request(
+            HTTPXRequest(
+                connect_timeout=30.0,
+                read_timeout=60.0,
+                write_timeout=30.0,
+            )
+        )
+        .build()
+    )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.PHOTO, on_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_text))
+    app.add_handler(CallbackQueryHandler(on_callback))
     log.info("Bot starting (allowlist user %s)", ALLOWED)
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
